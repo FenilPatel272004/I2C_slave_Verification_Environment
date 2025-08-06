@@ -6,11 +6,6 @@ TOP = testbench_top
 # waveform file name
 WAVE = wave_i2c_slave
 
-# UVM-1.2 library directory path
-#UVM_PATH = /home/Fenil/tools/mentor/questa/2023.1/questasim/verilog_src/uvm-1.2
-UVM_PATH = $(shell dirname $(shell which vsim))/../verilog_src/uvm-1.2
-
-
 # testcane name
 TEST?=sanity
 
@@ -42,8 +37,7 @@ simulate:
 	vsim -f questa.tops -sv_seed random +UVM_NO_RELNOTES -voptargs="+acc=npr" -syncio -batch \
 	+UVM_TESTNAME=$(TEST) +UVM_VERBOSITY=$(VERBOSITY) +wr_pkt=$(wr_pkt) +rd_pkt=$(rd_pkt) \
 	-do "vcd file $(WAVE).vcd; vcd add -r /$(TOP)/*; run -all; exit" \
-	# | perl -pe 'use Term::ANSIColor; s/(UVM_ERROR.*)/color("red").$$1.color("reset")/ge; s/(UVM_INFO.*)/color("ansi4").$$1.color("reset")/ge; s/(UVM_INFO.*SCOREBOARD.*)/color("ansi34").$$1.color("reset")/ge; s/(UVM_INFO.*src.*)/color("ansi15").$$1.color("reset")/ge; s/(UVM_WARNING.*)/color("yellow").$$1.color("reset")/ge;  s/(UVM_FATAL.*)/color("bold bright_red").$$1.color("reset")/ge'
-
+	
 view:
 	vcd2wlf $(WAVE).vcd $(WAVE).wlf
 	vsim $(WAVE).wlf
