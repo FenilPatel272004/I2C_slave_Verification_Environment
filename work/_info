@@ -1,0 +1,192 @@
+m255
+K4
+z2
+!s99 nomlopt
+!s11f vlog 2021.2_1 2021.05, May 15 2021
+13
+!s112 1.1
+!i10d 8192
+!i10e 25
+!i10f 100
+cModel Technology
+Z0 d/home/Fenil/Protocol_learning/04_I2C/01_i2c_slave
+T_opt
+!s11d i2c_pkg /home/Fenil/Protocol_learning/04_I2C/01_i2c_slave/work 1 i2c_intf 1 /home/Fenil/Protocol_learning/04_I2C/01_i2c_slave/work 
+!s110 1754457972
+VJOgTl=3ZIAK6NH@U2WizI2
+04 13 4 work testbench_top fast 0
+=1-000ae431a4f1-6892e773-e1795-614d
+!s124 OEM100
+o-quiet -auto_acc_if_foreign -work work +acc=npr
+Z1 tCvgOpt 0
+n@_opt
+OL;O;2021.2_1;73
+Yi2c_intf
+Z2 DXx6 sv_std 3 std 0 22 9oUSJO;AeEaW`l:M@^WG92
+Z3 DXx6 mtiUvm 7 uvm_pkg 0 22 8V[`8]Q0W57le7Z>zYaAj1
+Z4 DXx4 work 21 testbench_top_sv_unit 0 22 Od2RC`UOR=8IG_Nl^@@Ze0
+Z5 !s110 1754457969
+Z6 VDg1SIo80bB@j0V0VzS_@n1
+r1
+!s85 0
+!i10b 1
+!s100 =zZ?3E21nz`lJLg>BICW>0
+IZnWg6RV_>:>^m@a0@GcX@0
+Z7 !s105 testbench_top_sv_unit
+S1
+R0
+w1754302399
+8COMPONENT/i2c_intf.sv
+Z8 FCOMPONENT/i2c_intf.sv
+!i122 0
+Z9 L0 1 0
+Z10 OL;L;2021.2_1;73
+31
+Z11 !s108 1754457969.000000
+Z12 !s107 TESTCASE/sanity.sv|COMPONENT/i2c_base_test.svh|COMPONENT/i2c_environment.svh|COMPONENT/i2c_scoreboard.svh|COMPONENT/i2c_agent.svh|COMPONENT/i2c_monitor.svh|COMPONENT/i2c_driver.svh|COMPONENT/i2c_sequence.svh|COMPONENT/i2c_sequencer.svh|COMPONENT/i2c_seq_item.svh|i2c_pkg.sv|COMPONENT/i2c_intf.sv|DUT/i2c_slave.v|/home/Fenil/tools/questasim/uvm-1.1d/../verilog_src/uvm-1.1d/src/macros/uvm_deprecated_defines.svh|/home/Fenil/tools/questasim/uvm-1.1d/../verilog_src/uvm-1.1d/src/macros/uvm_reg_defines.svh|/home/Fenil/tools/questasim/uvm-1.1d/../verilog_src/uvm-1.1d/src/macros/uvm_callback_defines.svh|/home/Fenil/tools/questasim/uvm-1.1d/../verilog_src/uvm-1.1d/src/macros/uvm_sequence_defines.svh|/home/Fenil/tools/questasim/uvm-1.1d/../verilog_src/uvm-1.1d/src/tlm1/uvm_tlm_imps.svh|/home/Fenil/tools/questasim/uvm-1.1d/../verilog_src/uvm-1.1d/src/macros/uvm_tlm_defines.svh|/home/Fenil/tools/questasim/uvm-1.1d/../verilog_src/uvm-1.1d/src/macros/uvm_printer_defines.svh|/home/Fenil/tools/questasim/uvm-1.1d/../verilog_src/uvm-1.1d/src/macros/uvm_object_defines.svh|/home/Fenil/tools/questasim/uvm-1.1d/../verilog_src/uvm-1.1d/src/macros/uvm_phase_defines.svh|/home/Fenil/tools/questasim/uvm-1.1d/../verilog_src/uvm-1.1d/src/macros/uvm_message_defines.svh|/home/Fenil/tools/questasim/uvm-1.1d/../verilog_src/uvm-1.1d/src/macros/uvm_version_defines.svh|/home/Fenil/tools/questasim/uvm-1.1d/../verilog_src/uvm-1.1d/src/uvm_macros.svh|testbench_top.sv|
+Z13 !s90 -sv|-O0|+acc|+define+UVM_NO_DPI|+define+QUESTA|-writetoplevels|questa.tops|testbench_top.sv|
+!s101 -O0
+!i113 0
+Z14 o-sv -O0 +acc -L mtiAvm -L mtiRnm -L mtiOvm -L mtiUvm -L mtiUPF -L infact
+Z15 !s92 -sv -O0 +acc +define+UVM_NO_DPI +define+QUESTA -L mtiAvm -L mtiRnm -L mtiOvm -L mtiUvm -L mtiUPF -L infact
+R1
+Xi2c_pkg
+!s115 i2c_intf
+R2
+R3
+R5
+VIdBMV`HMHKb=Uf92fFH031
+r1
+!s85 0
+!i10b 1
+!s100 D[mhS@lGjK<;j0I;4mo250
+IIdBMV`HMHKb=Uf92fFH031
+S1
+R0
+w1754389378
+Z16 Fi2c_pkg.sv
+Z17 F/home/Fenil/tools/questasim/uvm-1.1d/../verilog_src/uvm-1.1d/src/uvm_macros.svh
+FCOMPONENT/i2c_seq_item.svh
+FCOMPONENT/i2c_sequencer.svh
+FCOMPONENT/i2c_sequence.svh
+FCOMPONENT/i2c_driver.svh
+FCOMPONENT/i2c_monitor.svh
+FCOMPONENT/i2c_agent.svh
+FCOMPONENT/i2c_scoreboard.svh
+FCOMPONENT/i2c_environment.svh
+FCOMPONENT/i2c_base_test.svh
+FTESTCASE/sanity.sv
+!i122 0
+R9
+R10
+31
+R11
+R12
+R13
+!s101 -O0
+!i113 0
+R14
+R15
+R1
+vi2c_slave
+R2
+R3
+R4
+R5
+R6
+r1
+!s85 0
+!i10b 1
+!s100 n6Qn:[QJaNX2[OY@A@F0G0
+I1dZhNjiBXNj`<FERQg7FL3
+R7
+S1
+R0
+w1754287126
+8DUT/i2c_slave.v
+Z18 FDUT/i2c_slave.v
+!i122 0
+L0 3 175
+R10
+31
+R11
+R12
+R13
+!s101 -O0
+!i113 0
+R14
+R15
+R1
+vtestbench_top
+R2
+R3
+R4
+DXx4 work 7 i2c_pkg 0 22 IdBMV`HMHKb=Uf92fFH031
+R5
+R6
+r1
+!s85 0
+!i10b 1
+!s100 ;5ABFCD5oUTn^`om:`;hM3
+I3:aVXc>KFCgORzE54R<fG1
+R7
+S1
+R0
+Z19 w1754388879
+Z20 8testbench_top.sv
+Z21 Ftestbench_top.sv
+!i122 0
+L0 14 31
+R10
+31
+R11
+R12
+R13
+!s101 -O0
+!i113 0
+R14
+R15
+R1
+Xtestbench_top_sv_unit
+R2
+R3
+R5
+VOd2RC`UOR=8IG_Nl^@@Ze0
+r1
+!s85 0
+!i10b 1
+!s100 dGGLP1K0ElHe5:2:H5AHV3
+IOd2RC`UOR=8IG_Nl^@@Ze0
+!i103 1
+S1
+R0
+R19
+R20
+R21
+R17
+F/home/Fenil/tools/questasim/uvm-1.1d/../verilog_src/uvm-1.1d/src/macros/uvm_version_defines.svh
+F/home/Fenil/tools/questasim/uvm-1.1d/../verilog_src/uvm-1.1d/src/macros/uvm_message_defines.svh
+F/home/Fenil/tools/questasim/uvm-1.1d/../verilog_src/uvm-1.1d/src/macros/uvm_phase_defines.svh
+F/home/Fenil/tools/questasim/uvm-1.1d/../verilog_src/uvm-1.1d/src/macros/uvm_object_defines.svh
+F/home/Fenil/tools/questasim/uvm-1.1d/../verilog_src/uvm-1.1d/src/macros/uvm_printer_defines.svh
+F/home/Fenil/tools/questasim/uvm-1.1d/../verilog_src/uvm-1.1d/src/macros/uvm_tlm_defines.svh
+F/home/Fenil/tools/questasim/uvm-1.1d/../verilog_src/uvm-1.1d/src/tlm1/uvm_tlm_imps.svh
+F/home/Fenil/tools/questasim/uvm-1.1d/../verilog_src/uvm-1.1d/src/macros/uvm_sequence_defines.svh
+F/home/Fenil/tools/questasim/uvm-1.1d/../verilog_src/uvm-1.1d/src/macros/uvm_callback_defines.svh
+F/home/Fenil/tools/questasim/uvm-1.1d/../verilog_src/uvm-1.1d/src/macros/uvm_reg_defines.svh
+F/home/Fenil/tools/questasim/uvm-1.1d/../verilog_src/uvm-1.1d/src/macros/uvm_deprecated_defines.svh
+R18
+R8
+R16
+!i122 0
+L0 6 0
+R10
+31
+R11
+R12
+R13
+!s101 -O0
+!i113 0
+R14
+R15
+R1

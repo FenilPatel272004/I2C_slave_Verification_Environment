@@ -1,0 +1,1034 @@
+Filename : testbench_top.sv
+
+`timescale 1ns/1ps
+`define AW 8
+`define DW 8
+
+`include "uvm_macros.svh"
+import uvm_pkg::*;
+
+`include "DUT/i2c_slave.v"
+
+`include "COMPONENT/i2c_intf.sv"
+
+`include "i2c_pkg.sv"
+
+module testbench_top;
+
+import i2c_pkg::*;
+
+bit clk;
+bit rst_n;
+
+i2c_intf inf (.clk(clk),.rst_n(rst_n));
+pullup(inf.scl);
+pullup(inf.sda);
+initial	
+	uvm_config_db#(virtual i2c_intf)::set(null, "*", "i2c_intf", inf);
+
+always #5 clk = ~clk;	// 100 MHz clk
+
+i2c_slave#(.AW(`AW),.DW(`DW)) dut (
+	.rst_n(inf.rst_n),
+	.SDA(inf.sda),
+	.SCL(inf.scl)
+);
+
+initial begin
+	rst_n=0;
+	#7 rst_n=1;
+end
+
+initial begin
+	run_test();
+end
+
+endmodule : testbench_top
+
+
+/******************************/
+
+Filename : i2c_pkg.sv
+
+package i2c_pkg;
+
+	`include "uvm_macros.svh";
+	import uvm_pkg::*;
+
+	int wr_pkt=2;
+	int rd_pkt=2;
+
+	`include "COMPONENT/i2c_seq_item.svh";
+	`include "COMPONENT/i2c_sequencer.svh";
+	`include "COMPONENT/i2c_sequence.svh";
+	`include "COMPONENT/i2c_driver.svh";
+	`include "COMPONENT/i2c_monitor.svh";
+	`include "COMPONENT/i2c_agent.svh";
+	`include "COMPONENT/i2c_scoreboard.svh"
+	`include "COMPONENT/i2c_environment.svh";
+	`include "COMPONENT/i2c_base_test.svh";
+
+	`include "TESTCASE/sanity.sv"
+
+endpackage
+
+
+/******************************/
+
+Filename : DUT/i2c_slave.v
+
+`define SLAVE_ID 7'b1010101
+
+module i2c_slave#(parameter AW=8, DW=8)(
+	input rst_n,
+
+	inout SDA,
+	input SCL
+);
+
+	// slave ID
+	localparam SLAVE_ADDRESS = `SLAVE_ID;
+
+	// master states
+	reg [3:0] state, n_state;
+
+	localparam	IDLE='d0,
+				TARGET_ADDRESS='d1,
+				SEND_DATA='d2,
+				RECEIVE_DATA='d3,
+				RECEIVE_ACK='d4,
+				SEND_ACK='d5;
+
+	// to handle SDA inout
+	reg sda_out;
+	wire slv_sda_ctrl;
+	assign SDA = (slv_sda_ctrl) ? sda_out : 1'bz;
+	assign slv_sda_ctrl = (state==SEND_ACK || state==SEND_DATA);
+	
+	reg [3:0] count; // byte count
+	// reg to store SDA data
+	reg addr_data;  //0: taking addr,	1: taking data
+	reg [7 : 0] addr_op;
+	reg [AW-1 : 0] mem_addr;
+	reg [DW-1 : 0] data;
+
+	// slave memory
+	reg [DW-1 : 0] mem [0 : (1<<AW)-1];
+
+	// state transition
+	// assign n_state to state at posedge SCL
+	always @(negedge rst_n or negedge SCL) begin	
+		if(!rst_n) begin
+			state <= IDLE;
+			n_state <= IDLE;
+			//slv_sda_ctrl <= 0;
+			sda_out <= 1;
+			count <= 0;
+			addr_data <= 0;
+			addr_op <= 0;
+			mem_addr <= 0;
+			data <= 0;
+		end else begin
+			state <= n_state;
+		end
+	end
+
+	// to detect START and STOP condition because there won't be any scl toggle
+	always @(SDA) begin	
+		// start condition
+		if(SCL && !SDA) begin
+			state = TARGET_ADDRESS;
+			addr_data = 0;
+			count <= 0;
+		end
+		// stop condition
+		if(SCL && SDA) begin
+			state = IDLE;
+			count <= 0;
+		end
+	end
+
+	// next state block
+	always@(*) begin
+		case(state)
+			IDLE: begin
+				n_state = IDLE;
+				count = 0;
+			end
+
+			TARGET_ADDRESS: begin
+				if(count==8) begin
+					if(addr_op[7:1]==`SLAVE_ID)
+						n_state = SEND_ACK;
+					else
+						n_state = IDLE;
+				end else
+					n_state = TARGET_ADDRESS;
+			end
+
+			SEND_ACK: begin
+				if(addr_op[0]) 
+					n_state = SEND_DATA;
+				else 
+					n_state = RECEIVE_DATA;
+				
+			end
+
+			RECEIVE_ACK: begin
+			end
+
+			RECEIVE_DATA: begin
+				if(count == 8)
+					n_state = SEND_ACK;
+				else
+					n_state = RECEIVE_DATA;
+			end
+			
+			SEND_DATA: begin
+				if(count == 8)
+					n_state = RECEIVE_ACK;
+				else
+					n_state = SEND_DATA;
+			end
+
+		endcase
+	end
+
+	// posedge to sample data send by master
+	always@(posedge SCL) begin	
+		case(state)
+			TARGET_ADDRESS: begin
+				addr_op[~count[2:0]] <= SDA;
+				count <= count + 1'b1;
+			end
+		
+			RECEIVE_DATA: begin
+				if(addr_data) begin
+					data[~count[2:0]] <= SDA; // store SDA in "data" and then assign it to "mem[mem_addr]"
+				end else
+					mem_addr[~count[2:0]] <= SDA;
+				count <= count + 1'b1;
+			end
+
+			SEND_DATA: begin			// there will be half cycle problem in state transistion if we update  
+				count <= count + 1;		// counter for RECEIVE_DATA & SEND_DATA at different edge,				
+			end							// that's why i am updating it at same edge
+
+		endcase
+	end
+
+
+	// negedge to send data to master also take/give control of SDA
+	always@(negedge SCL or state) begin	
+		case(state)
+			TARGET_ADDRESS: begin
+				if(count == 8) begin
+					count <= 0;
+					if(addr_op[7:1]==`SLAVE_ID)
+						sda_out <= 0;
+				end
+			end
+
+			SEND_ACK: begin
+			end
+
+			RECEIVE_DATA: begin
+				if(count == 8) begin
+					addr_data <= ~addr_data;
+					count <= 0;
+					sda_out <= 0;
+					if(addr_data)
+						mem[mem_addr] <= data;
+				end
+			end
+
+			RECEIVE_ACK: begin
+			end
+
+			SEND_DATA: begin
+				sda_out <= mem[mem_addr][~count[2:0]];
+				if(count == 8)
+					count <= 0;
+			end
+		endcase
+	end
+
+endmodule
+
+
+/******************************/
+
+Filename : COMPONENT/i2c_agent.svh
+
+class i2c_agent extends uvm_agent;
+
+	i2c_sequencer seqr;
+	i2c_driver drv;
+	i2c_monitor mon;
+	
+	`uvm_component_utils(i2c_agent)
+
+	function new(string name="i2c_agent", uvm_component parent);
+		super.new(name, parent);
+	endfunction : new
+
+	virtual function void build_phase(uvm_phase phase);
+		super.build_phase(phase);
+		seqr = i2c_sequencer::type_id::create("seqr", this);
+		drv = i2c_driver::type_id::create("drv", this);
+		mon = i2c_monitor::type_id::create("mon", this);
+	endfunction : build_phase
+
+	virtual function void connect_phase(uvm_phase phase);
+		drv.seq_item_port.connect(seqr.seq_item_export);
+	endfunction : connect_phase
+
+endclass : i2c_agent
+
+
+/******************************/
+
+Filename : COMPONENT/i2c_base_test.svh
+
+class i2c_base_test extends uvm_test;
+
+	i2c_environment env;
+	i2c_wr_seq wr_seq;
+	i2c_rd_seq rd_seq;
+
+	`uvm_component_utils(i2c_base_test)
+
+	function new(string name="i2c_base_test", uvm_component parent);
+		super.new(name, parent);
+	endfunction : new
+
+	virtual function void build_phase(uvm_phase phase);
+		super.build_phase(phase);
+		env = i2c_environment::type_id::create("env", this);
+		wr_seq = i2c_wr_seq::type_id::create("wr_seq", this);
+		rd_seq = i2c_rd_seq::type_id::create("rd_seq", this);
+	endfunction : build_phase
+
+	virtual function void end_of_elaboration();
+		print();
+		//uvm_top.print_topology();
+	endfunction : end_of_elaboration
+
+endclass : i2c_base_test
+
+
+/******************************/
+
+Filename : COMPONENT/i2c_driver.svh
+
+class i2c_driver extends uvm_driver#(i2c_seq_item);
+
+	uvm_event reset_evt;
+	bit [7:0] prev_addr_op;
+	bit in_transaction;
+	bit apply_stop;
+	int count;
+	virtual i2c_intf vif;
+
+	`uvm_component_utils(i2c_driver)
+
+	function new(string name="i2c_driver", uvm_component parent);
+		super.new(name, parent);
+	endfunction : new
+
+	virtual function void build_phase(uvm_phase phase);
+		//super.build_phase(phase);
+		if(!uvm_config_db#(virtual i2c_intf)::get(this, "", "i2c_intf", vif))
+			`uvm_fatal("NOVIF", "Virtual interface not set in config DB");
+		reset_evt = new();
+	endfunction : build_phase
+
+	virtual task run_phase(uvm_phase phase);
+		forever begin
+			seq_item_port.get_next_item(req);
+			count++;
+			//req.print();
+			`uvm_info("DRVIVER", $sformatf("\tslave_id=%b  addr=%b  rw=%b  data_in=%b", `SLAVE_ID, req.addr, req.rw, req.data_in), UVM_FULL)
+			drive_pkt();
+			
+			if(req.rw)
+				`uvm_info("DRIVER", $sformatf("\tat addr=%b  read=%b", req.addr, req.data_out), UVM_FULL)
+			else
+				`uvm_info("DRIVER", $sformatf("\tat addr=%b  wriet=%b", req.addr, req.data_in), UVM_FULL)
+			
+			seq_item_port.item_done();
+
+		end
+	endtask : run_phase
+
+	virtual task drive_pkt();
+		fork
+			forever begin : reset_block
+				@(negedge vif.rst_n);
+				reset_evt.trigger;
+			end : reset_block
+
+			begin
+				reset_evt.wait_trigger;
+				disable drv_main;
+				`uvm_info("DRIVER", "\tapplying reset", UVM_LOW)
+				@(posedge vif.rst_n);
+				in_transaction=0;
+			end
+
+			begin : drv_main
+				if(!vif.rst_n) begin
+					`uvm_info("DRIVER", "\tapplying reset", UVM_LOW)
+					@(posedge vif.rst_n);
+					in_transaction=0;
+				end
+				if(!in_transaction) begin
+					start_condition();
+					send_byte({req.target_addr, 1'b0});
+					receive_ack();
+				end else if(prev_addr_op[7:1] == req.target_addr && prev_addr_op[0] != 1'b0) begin
+					repeat_start();
+					send_byte({req.target_addr, 1'b0});
+					receive_ack();
+				end
+				prev_addr_op = {req.target_addr, 1'b0};
+				send_byte(req.addr);
+				receive_ack();
+				if(req.rw) begin
+					repeat_start();
+					send_byte({req.target_addr, req.rw});
+					prev_addr_op = {req.target_addr, req.rw};
+					receive_ack();
+					receive_byte(req.data_out);
+					send_ack();
+				end else begin
+					send_byte(req.data_in);
+					receive_ack();
+				end
+				if(apply_stop)
+					stop_condition();
+				
+			end : drv_main
+
+		join_any
+		disable fork;
+		disable reset_block;
+	endtask : drive_pkt
+
+
+
+	virtual task start_condition();
+		repeat(1000)
+			@(posedge vif.clk);
+		vif.mst_sda_ctrl=1;
+		vif.mst_sda_out=0;
+		vif.mst_scl_ctrl=1;
+		in_transaction = 1;
+		`uvm_info("DRIVER", "\tstart condition...", UVM_FULL)
+	endtask : start_condition
+
+	virtual task repeat_start();
+		@(negedge vif.scl); 
+		vif.mst_sda_ctrl=1;
+		vif.mst_sda_out=1;
+		@(posedge vif.scl) 
+		vif.mst_hold_scl_high=1;
+		repeat(500)
+			@(posedge vif.clk)
+		vif.mst_sda_ctrl=1;
+		vif.mst_sda_out=0;
+		vif.mst_hold_scl_high=0;
+		`uvm_info("DRIVER", "\trepeat start condition...", UVM_FULL)
+	endtask : repeat_start
+
+	virtual task stop_condition();
+		apply_stop = 0;
+		@(negedge vif.scl) vif.mst_sda_ctrl=1;
+						   vif.mst_sda_out=0;
+		@(posedge vif.scl) vif.mst_hold_scl_high=1;
+						   vif.mst_sda_ctrl=1;
+						   vif.mst_sda_out=0;
+		repeat(1000)
+			@(posedge vif.clk);
+		vif.mst_sda_ctrl=1;
+		vif.mst_sda_out=1;
+		`uvm_info("DRIVER", "\tstop condition...", UVM_FULL)
+		@(posedge vif.clk) vif.mst_sda_ctrl=0;
+						   vif.mst_sda_out=0;
+						   vif.mst_scl_ctrl=0;
+						   vif.mst_hold_scl_high=0;
+		repeat(500)
+			@(posedge vif.clk);
+		in_transaction = 0;
+	endtask : stop_condition
+
+	// master take control of SDA and send bit to slave
+	virtual task send_byte(bit [7:0] byte_to_send);
+		for(int i=0; i<8; i++) begin
+			@(negedge vif.scl);
+			vif.mst_sda_ctrl=1;
+			vif.mst_sda_out=byte_to_send[7-i];
+		end
+	endtask : send_byte
+
+	// master release SDA and take bit send by slave
+	task receive_byte(output bit [7:0] byte_to_receive);
+		@(negedge vif.scl);
+		for(int i=0; i<8; i++) begin
+			@(posedge vif.scl);
+			vif.mst_sda_ctrl=0;
+			byte_to_receive[7-i]=vif.sda;
+		end
+	endtask : receive_byte
+	
+	// free SDA so slave can send ack
+	task receive_ack();
+		@(negedge vif.scl) vif.mst_sda_ctrl=0;
+	endtask : receive_ack
+
+	// take control of SDA and send ack to slave
+	task send_ack();
+		@(negedge vif.scl) vif.mst_sda_ctrl=1;
+						   vif.mst_sda_out=0;
+	endtask : send_ack
+
+endclass : i2c_driver
+
+/*	
+	virtual task drive_pkt();
+		start_condition();
+		// send target address
+		send_byte({req.target_addr, 1'b0});	// master need to send address first on 
+		receive_ack();					// which write/read operation going to happen
+		repeat(10) begin
+		if(req.rw) begin
+			send_byte($random);
+			receive_ack();
+			repeat_start();
+			send_byte({req.target_addr, 1'b1});
+			receive_ack();
+			receive_byte(req.data_out);
+			send_ack();
+			repeat_start();
+			send_byte({req.target_addr, 1'b0});	// master need to send address first on 
+			receive_ack();					// which write/read operation going to happen
+		end else begin
+			send_byte($random);
+			receive_ack();
+			send_byte($random);
+			receive_ack();
+		end
+		end
+		stop_condition();
+	endtask : drive_pkt
+*/
+
+
+/******************************/
+
+Filename : COMPONENT/i2c_environment.svh
+
+class i2c_environment extends uvm_env;
+
+	i2c_agent agt;
+	i2c_scoreboard scb;
+
+	`uvm_component_utils(i2c_environment)
+
+	function new(string name="i2c_environment", uvm_component parent);
+		super.new(name, parent);
+	endfunction : new
+
+	virtual function void build_phase(uvm_phase phase);
+		super.build_phase(phase);
+		agt = i2c_agent::type_id::create("agt", this);
+		scb = i2c_scoreboard::type_id::create("scb", this);
+	endfunction : build_phase
+
+	virtual function void connect_phase(uvm_phase phase);
+		super.connect_phase(phase);
+		agt.mon.mon_port.connect(scb.scb_imp);
+	endfunction : connect_phase
+
+endclass : i2c_environment
+
+
+/******************************/
+
+Filename : COMPONENT/i2c_intf.sv
+
+interface i2c_intf(input bit clk, rst_n);
+
+	wire	scl;
+	wire	sda;
+
+	// sda & scl control signal
+	bit	mst_sda_ctrl;
+	bit	mst_sda_out;
+	bit	mst_scl_ctrl;
+	bit	mst_hold_scl_high;
+	bit [7:0] data_read;
+
+	// variable for 100khz clk
+	bit	clk_100khz;
+	int	count;	// counter for generating clk_100khz
+
+	// generate 100 khz clk
+	always@(posedge clk) begin
+		if(mst_scl_ctrl) begin
+			if (count == 499) begin
+				count <= 0;
+				clk_100khz <= ~clk_100khz;
+			end else begin
+				count++;
+			end
+		end else begin
+			count <= 0;
+			clk_100khz <= 1;
+		end
+		if(mst_hold_scl_high) count <= 0;
+	end
+
+	// handle sda & scl
+	assign scl = mst_scl_ctrl ? mst_hold_scl_high ? 1'b1 : clk_100khz : 1'bz;
+	assign sda = mst_sda_ctrl ? mst_sda_out : 1'bz;
+
+endinterface : i2c_intf
+
+
+/******************************/
+
+Filename : COMPONENT/i2c_monitor.svh
+
+class i2c_monitor extends uvm_monitor;
+
+	uvm_event start, stop, r_start;
+
+	bit [7:0] addr_op;	// address + operation(read(1) / write(0))
+	bit [7:0] addr;
+	bit [7:0] data_in;
+	bit [7:0] data_out;
+	bit	addr_data;	// flag to differenciate between receiving addr or data at write. 0-taking addr, 1-taking data
+	bit in_transaction;
+	virtual i2c_intf vif;
+
+	uvm_analysis_port#(i2c_seq_item) mon_port;
+
+	i2c_seq_item txn;
+
+	`uvm_component_utils(i2c_monitor)
+
+	function new(string name="i2c_monitor", uvm_component parent);
+		super.new(name, parent);
+	endfunction : new
+
+	virtual function void build_phase(uvm_phase phase);
+		super.build_phase(phase);
+		if(!uvm_config_db#(virtual i2c_intf)::get(this, "", "i2c_intf", vif))
+			`uvm_fatal("NOVIF", "Virtual interface not set in config DB");
+		mon_port = new("mon_port", this);
+		txn = i2c_seq_item::type_id::create("txn", this);
+		start = new();
+		stop = new();
+		r_start = new();
+		in_transaction=0;
+	endfunction : build_phase
+
+	virtual task store_byte(output bit [7:0] data_byte);
+		for(int i=7; i>=0; i--) begin
+			@(posedge vif.scl);
+			data_byte[i] = vif.sda;
+		end
+	endtask : store_byte
+
+	virtual task run_phase(uvm_phase phase);
+		fork
+			// START detection
+			forever begin : start_block
+				@(negedge vif.sda iff (vif.scl == 1));
+				start.trigger;
+			end : start_block
+
+			// STOP detection (only after START)
+			forever begin : stop_block
+				start.wait_trigger();
+				@(posedge vif.sda iff (vif.scl == 1));
+				stop.trigger;
+			end : stop_block
+
+			// Communication monitor block
+			forever begin : communication_block
+				if (!in_transaction) begin
+					start.wait_trigger;
+					`uvm_info("MONITOR", "\tStart condition detected...", UVM_MEDIUM)
+				end
+				in_transaction = 1;
+
+				fork
+					// Handle repeated START
+					begin
+						start.wait_trigger;
+						`uvm_info("MONITOR", "\tRepeat START detected — restarting transaction", UVM_HIGH)
+						disable monitor_transaction;
+					end
+
+					// Handle STOP
+					begin
+						stop.wait_trigger;
+						in_transaction = 0;
+						`uvm_info("MONITOR", "\tStop condition detected — ending transaction", UVM_MEDIUM)
+						disable monitor_transaction;
+					end
+
+					// Monitor I2C Transaction
+					begin : monitor_transaction
+						store_byte(addr_op);
+						addr_data = 0;	// reset flag at new connection
+						@(posedge vif.scl);
+					
+						if (vif.sda) begin
+							`uvm_warning("MONITOR", $sformatf("\tNo slave found with address %b", addr_op[7:1]))
+							disable monitor_transaction;
+						end else if (addr_op[7:1] == `SLAVE_ID) begin
+							if (addr_op[0]) begin
+								`uvm_info("MONITOR", $sformatf("\tConnected to %b for READ", addr_op[7:1]), UVM_HIGH)
+								forever begin
+									store_byte(data_out);
+									vif.data_read = data_out;
+									`uvm_info("MONITOR", $sformatf("\tData read = %b", data_out), UVM_HIGH)
+									@(posedge vif.scl);
+									if (vif.sda)
+										`uvm_info("MONITOR", "\tNACK received", UVM_MEDIUM)
+									`uvm_info("MONITOR", $sformatf("\tAt addr = %b, read = %b", addr, data_out), UVM_MEDIUM)
+									txn.target_addr = addr_op[7:1];
+									txn.rw = addr_op[0];
+									txn.addr = addr;
+									txn.data_out = data_out;
+									mon_port.write(txn);
+								end
+							end else begin
+								`uvm_info("MONITOR", $sformatf("\tConnected to %b for WRITE", addr_op[7:1]), UVM_HIGH)
+								forever begin
+									if (addr_data) begin
+										store_byte(data_in);
+										`uvm_info("MONITOR", $sformatf("\tData write = %b", data_in), UVM_HIGH)
+									end else begin
+										store_byte(addr);
+										`uvm_info("MONITOR", $sformatf("\tMemory address = %b", addr), UVM_HIGH)
+									end
+									@(posedge vif.scl);
+									if (vif.sda)
+										`uvm_info("MONITOR", "\tNACK received", UVM_MEDIUM)
+									if (addr_data) begin
+										`uvm_info("MONITOR", $sformatf("\tAt addr = %b, write = %b", addr, data_in), UVM_MEDIUM)
+										txn.target_addr = addr_op[7:1];
+										txn.rw = addr_op[0];
+										txn.addr = addr;
+										txn.data_in = data_in;
+										mon_port.write(txn);
+									end
+									addr_data = ~addr_data;
+								end
+							end
+						end
+					end : monitor_transaction
+				join_any
+				disable fork;
+			end : communication_block
+		join
+	endtask : run_phase
+
+endclass : i2c_monitor
+
+/*
+	virtual task run_phase(uvm_phase phase);
+		begin
+			fork
+				begin : start_block
+					forever begin
+						@(negedge vif.sda iff (vif.scl==1));
+						start.trigger;
+					end
+				end
+				begin : stop_block
+					forever begin
+						start.wait_trigger();
+						@(posedge vif.sda iff (vif.scl==1));
+						stop.trigger;
+					end
+				end
+				begin : comunication_block
+					forever begin : start_again
+						if(!in_transaction) begin
+							start.wait_trigger;
+							`uvm_info("MONITOR", "start condition detected...", UVM_MEDIUM)
+						end
+						in_transaction = 1;
+						fork
+							begin
+								start.wait_trigger;
+								`uvm_info("MONITOR", "repeat start condition detected...", UVM_HIGH)
+								disable monitor_transaction;
+							end
+							begin
+								stop.wait_trigger();
+								`uvm_info("MONITOR", "stop condition detected...", UVM_MEDIUM)
+								in_transaction = 0;
+								disable monitor_transaction;
+							end
+
+							begin : monitor_transaction
+								store_byte(addr_op);
+								addr_data = 0; // reset flag at new connection
+								@(posedge vif.scl);
+								if(vif.sda) begin
+									`uvm_warning("MONITOR", $sformatf("No slave fond with %b address", addr_op[7:1]))
+									disable monitor_transaction;
+								end else begin
+									if(addr_op[7:1] == `SLAVE_ID) begin
+										if(addr_op[0]) begin
+											`uvm_info("MONITOR", $sformatf("Connected to %b for read operation", addr_op[7:1]), UVM_HIGH)
+											forever begin
+												store_byte(data_out);
+												vif.data_read = data_out;
+												`uvm_info("MONITOR", $sformatf("data read = %b", data_out), UVM_HIGH)
+												`uvm_info("MONITOR", $sformatf("at addr=%b read=%b", addr, data_out), UVM_MEDIUM)
+												@(posedge vif.scl);
+												if(vif.sda)
+													`uvm_info("MONITOR", "NACK receive...", UVM_MEDIUM)
+											end
+										end else begin
+											`uvm_info("MONITOR", $sformatf("Connected to %b for write operation", addr_op[7:1]), UVM_HIGH)
+											forever begin
+												if(addr_data) begin
+													store_byte(data_in);
+													`uvm_info("MONITOR", $sformatf("data write = %b", data_in), UVM_HIGH)
+												end else begin
+													store_byte(addr);
+													`uvm_info("MONITOR", $sformatf("      addr = %b", addr), UVM_HIGH)
+												end
+												if(addr_data)
+													`uvm_info("MONITOR", $sformatf("at addr=%b write=%b", addr, data_in), UVM_MEDIUM)
+												addr_data = ~addr_data;
+												@(posedge vif.scl);
+												if(vif.sda)
+													`uvm_info("MONITOR", "NACK receive...", UVM_MEDIUM)
+											end
+										end
+									end
+								end
+							end
+						join_any
+						disable fork;
+					end
+				end
+			join
+		end
+	endtask : run_phase
+*/
+
+
+/******************************/
+
+Filename : COMPONENT/i2c_scoreboard.svh
+
+class i2c_scoreboard extends uvm_scoreboard;
+
+	i2c_seq_item pkt_que[$];
+
+	logic [`DW-1 : 0] ref_MEM [0 : (1<<`AW)-1];
+
+	i2c_seq_item txn;
+
+	uvm_analysis_imp#(i2c_seq_item, i2c_scoreboard) scb_imp;
+
+	`uvm_component_utils(i2c_scoreboard)
+
+	function new(string name="i2c_scoreboard", uvm_component parent);
+		super.new(name, parent);
+	endfunction : new
+
+	virtual function void build_phase(uvm_phase phase);
+		super.build_phase(phase);
+		scb_imp = new("scb_imp", this);
+	endfunction : build_phase
+
+	virtual function void write(i2c_seq_item txn);
+		pkt_que.push_back(txn);
+	endfunction : write
+
+	virtual task run_phase(uvm_phase phase);
+		forever begin
+			wait(pkt_que.size() > 0);
+			txn = pkt_que.pop_front();
+			if(txn.rw) begin
+				if(txn.data_out === ref_MEM[txn.addr]) begin
+					`uvm_info("SCOREBOARD", $sformatf("\tREAD DATA MATCH     addr=%2d   data=0x%8h", txn.addr, txn.data_out), UVM_LOW)
+				end else begin
+					`uvm_error("SCOREBOARD", $sformatf("\tREAD DATA MIS-MATCH  addr=%2d   read_data=0x%8h   expected=0x%8h", txn.addr, txn.data_out, ref_MEM[txn.addr]))
+				end
+			end else begin
+				ref_MEM[txn.addr] = txn.data_in;
+				`uvm_info("SCOREBOARD", $sformatf("\tDATA WRITE        addr=%2d   data=0x%8h", txn.addr, txn.data_in), UVM_LOW)
+			end
+		end
+	endtask : run_phase
+endclass : i2c_scoreboard
+
+
+/******************************/
+
+Filename : COMPONENT/i2c_seq_item.svh
+
+class i2c_seq_item extends uvm_sequence_item;
+	rand	bit	[6:0]		target_addr;
+	rand	bit				rw; // 0-write,	1-read
+	rand	bit	[`AW-1:0]	addr;
+	rand	bit	[`DW-1:0]	data_in;
+			bit	[`DW-1:0]	data_out;
+	
+	`uvm_object_utils_begin(i2c_seq_item)
+		`uvm_field_int(target_addr, UVM_ALL_ON)
+		`uvm_field_int(rw, UVM_ALL_ON)
+		`uvm_field_int(addr, UVM_ALL_ON)
+		`uvm_field_int(data_in, UVM_ALL_ON)
+		`uvm_field_int(data_out, UVM_ALL_ON)
+	`uvm_object_utils_end
+
+	function new(string name="i2c_seq_item");
+		super.new(name);
+	endfunction : new
+
+endclass : i2c_seq_item
+
+
+/******************************/
+
+Filename : COMPONENT/i2c_sequence.svh
+
+class base_sequence extends uvm_sequence#(i2c_seq_item);
+
+	static logic [`AW-1:0] wr_addr_que [$];
+
+	// flag & variable for fix address and data
+	bit fix_addr_flag = 0;
+	bit fix_data_flag = 0;
+	bit [`AW-1 : 0] fix_addr;
+	bit [`DW-1 : 0] fix_data;
+
+	`uvm_object_utils(base_sequence)
+
+	function new(string name="base_sequence");
+		super.new(name);
+	endfunction : new
+
+	// set addr
+	virtual function void set_addr(bit [`AW-1 : 0] addr);
+		fix_addr_flag = 1;
+		fix_addr = addr;
+	endfunction : set_addr
+
+	// set data
+	virtual function void set_data(bit [`DW-1 : 0] data);
+		fix_data_flag = 1;
+		fix_data = data;
+	endfunction : set_data
+
+	// reset flag
+	virtual task post_body();
+		super.post_body();
+		fix_addr_flag = 0;
+		fix_data_flag = 0;
+	endtask : post_body
+endclass : base_sequence
+
+
+class i2c_wr_seq extends base_sequence;
+	
+	`uvm_object_utils(i2c_wr_seq)
+
+	function new(string name="i2c_wr_seq");
+		super.new(name);
+	endfunction : new
+
+	virtual task body();
+		/*
+		req = i2c_seq_item::type_id::create("req");
+		assert(req.randomize() with {req.target_addr==`SLAVE_ID; req.rw==0;});
+		send_request(req);
+		wr_addr_que.push_back(req.addr);
+		*/
+		`uvm_do_with(req, {req.target_addr==`SLAVE_ID; req.rw==0; if(fix_addr_flag)req.addr==fix_addr; if(fix_data_flag)req.data_in==fix_data;})
+		wr_addr_que.push_back(req.addr);
+	endtask : body
+
+endclass : i2c_wr_seq
+
+
+class i2c_rd_seq extends base_sequence;
+	
+	`uvm_object_utils(i2c_rd_seq)
+
+	function new(string name="i2c_rd_seq");
+		super.new(name);
+	endfunction : new
+
+	virtual task body();
+		/*
+		req = i2c_seq_item::type_id::create("req");
+		assert(req.randomize() with {req.target_addr==`SLAVE_ID; req.rw==1; if(wr_addr_que.size()>0){req.addr==wr_addr_que.pop_front();}});
+		send_request(req);
+		*/
+		`uvm_do_with(req, {req.target_addr==`SLAVE_ID; req.rw==1; if(fix_addr_flag){req.addr==fix_addr;} else if(wr_addr_que.size()>0){req.addr==wr_addr_que.pop_front();}})
+	endtask : body
+
+endclass : i2c_rd_seq
+
+
+/******************************/
+
+Filename : COMPONENT/i2c_sequencer.svh
+
+class i2c_sequencer extends uvm_sequencer#(i2c_seq_item);
+
+	`uvm_component_utils(i2c_sequencer)
+
+	function new(string name="i2c_sequencer", uvm_component parent);
+		super.new(name, parent);
+	endfunction : new
+
+endclass : i2c_sequencer
+
+
+/******************************/
+
+Filename : TESTCASE/sanity.sv
+
+class sanity extends i2c_base_test;
+	
+	`uvm_component_utils(sanity)
+
+	function new(string name = "sanity", uvm_component parent = null);
+		super.new(name, parent);
+	endfunction : new
+
+	virtual task run_phase(uvm_phase phase);
+		phase.raise_objection(this);
+		wr_seq.start(env.agt.seqr);
+		wr_seq.start(env.agt.seqr);
+		rd_seq.start(env.agt.seqr);
+		env.agt.drv.apply_stop=1;
+		rd_seq.start(env.agt.seqr);
+		wr_seq.start(env.agt.seqr);
+		wr_seq.start(env.agt.seqr);
+		rd_seq.start(env.agt.seqr);
+		env.agt.drv.apply_stop=1;
+		rd_seq.start(env.agt.seqr);
+		phase.drop_objection(this);
+	endtask : run_phase
+
+endclass : sanity
+
+
+/******************************/
+
