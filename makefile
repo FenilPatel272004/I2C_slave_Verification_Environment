@@ -60,6 +60,4 @@ clean:
 		! -path './TESTCASE/*' \
 		-exec rm -rf {} +
 	
-help:
-	echo -n "\nAvailable test case:\n sanity        : sanity test\n full_mem      : write and then read entire memory\n walk_0        : walk a bit 0 accross a addess\n walk_1        : walk a bit 1 accross a addess\n psel_v_setup  : psel violation in setup test\n pen_v_setup   : penable violation in setup test\n psel_v_access : psel violation in access test\n pen_v_access  : penable violation in access test\n pwr_v_access  : pwrite violation in access test\n pwd_v_access  : pwdata violation in access test\n paddr_v_access:paddr violation in access test\n random_signal : all signal are random\n random_v      : run any one violation\n rw_idle       : multiple read write with idle test\n\n"
 

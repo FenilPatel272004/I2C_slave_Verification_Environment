@@ -17,5 +17,6 @@ package i2c_pkg;
 	`include "COMPONENT/i2c_base_test.svh";
 
 	`include "TESTCASE/sanity.sv"
+	`include "TESTCASE/user_define_data.sv"
 
 endpackage
